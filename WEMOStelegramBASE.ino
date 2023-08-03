@@ -1,8 +1,8 @@
 #include <WiFi.h>
 #include <UniversalTelegramBot.h>
 #include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
 
-//#include <LiquidCrystal.h> 
 // #include <SD.h> // Comentamos la inclusión de la librería para el módulo SD Card
 #include <SPIFFS.h> // Para el manejo del sistema de archivos SPIFFS en ESP32
 #include <WiFiClientSecure.h>
@@ -19,7 +19,14 @@ const char* password = "484cx9900";
 WiFiClientSecure client;
 UniversalTelegramBot bot(BOTtoken, client);
 
-
+//////////////////////////////////////////////////////////////////////////////
+// set the LCD number of columns and rows
+int lcdColumns = 16;
+int lcdRows = 2;
+// set LCD address, number of columns and rows
+// if you don't know your display address, run an I2C scanner sketch
+LiquidCrystal_I2C lcd(0x27, lcdColumns, lcdRows);
+///////////////////////////////////////////////////////////////////////////
 // Checks for new messages every 1 second.
 int botRequestDelay = 1000;
 unsigned long lastTimeBotRan;
@@ -53,8 +60,12 @@ void handleNewMessages(int numNewMessages) {
     // Imprimimos el mensaje recibido
     String text = bot.messages[i].text;
     Serial.println(text);
-
-
+  lcd.setCursor(0, 0);
+  lcd.print(text);
+ // lcd.print("Hello, World!");
+  delay(5000);
+  // clears the display to print new message
+  lcd.clear();
 
 
     String from_name = bot.messages[i].from_name;
@@ -79,7 +90,10 @@ void handleNewMessages(int numNewMessages) {
 }
 
 void setup() {
-
+ // initialize LCD
+  lcd.init();
+  // turn on LCD backlight                      
+  lcd.backlight();
   
   Serial.begin(921600);
 
@@ -110,6 +124,9 @@ void setup() {
 }
 
 void loop() {
+lcd.setCursor(0, 0);
+
+
   if (millis() > lastTimeBotRan + botRequestDelay)  {
     int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
 
