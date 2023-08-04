@@ -1,101 +1,26 @@
-#include <WiFi.h>
-#include <UniversalTelegramBot.h>
-#include <Wire.h> 
-#include <LiquidCrystal_I2C.h>
-
-// #include <SD.h> // Comentamos la inclusión de la librería para el módulo SD Card
-#include <SPIFFS.h> // Para el manejo del sistema de archivos SPIFFS en ESP32
-#include <WiFiClientSecure.h>
-const char* ssid = "Torre_5G";
-const char* password = "484cx9900";
-
-#define BOTtoken "5960342524:AAHRXsM6sjsydOhF_yYNfVd_KWWUGyS79lo" // your Bot Token (Get from Botfather)
-#define CHAT_ID "5658825194"
-
-#ifdef ESP8266
-  X509List cert(TELEGRAM_CERTIFICATE_ROOT);
-#endif
-
-WiFiClientSecure client;
-UniversalTelegramBot bot(BOTtoken, client);
-
-//////////////////////////////////////////////////////////////////////////////
-// set the LCD number of columns and rows
-int lcdColumns = 16;
-int lcdRows = 2;
-// set LCD address, number of columns and rows
-// if you don't know your display address, run an I2C scanner sketch
-LiquidCrystal_I2C lcd(0x27, lcdColumns, lcdRows);
-///////////////////////////////////////////////////////////////////////////
-// Checks for new messages every 1 second.
-int botRequestDelay = 1000;
-unsigned long lastTimeBotRan;
-
-// Funciones para guardar mensajes en la SD Card (Comentado temporalmente)
-// void saveMessageToSD(const String& chat_id, const String& message) {
-//   // Código para guardar mensajes en la SD Card
-// }
-
-// void saveQuickResponseToSD(const String& response) {
-//   // Código para guardar respuestas rápidas en la SD Card
-// }
-
-// void saveActionToSD(const String& action) {
-//   // Código para guardar comandos de acción en la SD Card
-// }
-
-// Función para manejar nuevos mensajes recibidos
-void handleNewMessages(int numNewMessages) {
-  Serial.println("handleNewMessages");
-  Serial.println(String(numNewMessages));
-
-  for (int i=0; i<numNewMessages; i++) {
-    // Chat id del remitente
-    String chat_id = String(bot.messages[i].chat_id);
-    if (chat_id != CHAT_ID){
-      bot.sendMessage(chat_id, "Unauthorized user", "");
-      continue;
-    }
-    
-    // Imprimimos el mensaje recibido
-    String text = bot.messages[i].text;
-    Serial.println(text);
-  lcd.setCursor(0, 0);
-  lcd.print(text);
- // lcd.print("Hello, World!");
-  delay(5000);
-  // clears the display to print new message
-  lcd.clear();
+#include "Librerias.h"
+#include "Definitions.h"
+#include "SD_config.h"
+#include "auto.h"
 
 
-    String from_name = bot.messages[i].from_name;
-
-    if (text == "/start") {
-      String welcome = "Bienvenido, " + from_name + ".\n";
-      welcome += "Utiliza los siguientes comandos para controlar tus salidas y obtener estados de sensores.\n\n";
-      welcome += "/state para solicitar el estado actual de las salidas\n";
-      welcome += "/SFR para obtener el estado del sensor de distancia frontal\n";
-      welcome += "/SBR para obtener el estado del sensor de barrido\n";
-      welcome += "/SPT para obtener el estado del sensor posterior\n";
-      welcome += "/FRTEMP para obtener la temperatura frontal\n";
-      welcome += "/PTTEMP para obtener la temperatura posterior\n";
-      bot.sendMessage(chat_id, welcome, "");
-    }
-
-    // Resto de comandos para controlar salidas y obtener estados de sensores (por ejemplo, "/led_on1", "/SFR", "/SBR", "/SPT", "/FRTEMP", "/PTTEMP")
-
-    // Guardamos los mensajes en la SD Card (Comentado temporalmente)
-    // saveMessageToSD(chat_id, text);
-  }
-}
 
 void setup() {
+  lcd.begin(16, 2); // Inicializar el LCD (16 columnas y 2 filas)
  // initialize LCD
   lcd.init();
   // turn on LCD backlight                      
   lcd.backlight();
-  
-  Serial.begin(921600);
+  ///////////////////////////////////////////////
+ // Configuración de los pines de control H
+  pinMode(motorPin1, OUTPUT);
+  pinMode(motorPin2, OUTPUT);
+  pinMode(motorPin3, OUTPUT);
+  pinMode(motorPin4, OUTPUT);
+  pinMode(motorAPin, OUTPUT);
+  pinMode(motorBPin, OUTPUT);
+//////////////////////////////////////////////////
+  Serial.begin(921600); // eliminar el serial al final
 
   #ifdef ESP8266
     configTime(0, 0, "pool.ntp.org");      // obtener la hora UTC a través de NTP
@@ -115,9 +40,9 @@ void setup() {
   }
   
   // Inicializar el sistema de archivos SPIFFS para guardar el chat (Comentado temporalmente)
-  // if (!SPIFFS.begin()) {
-  //   Serial.println("Error al inicializar SPIFFS");
-  // }
+  if (!SPIFFS.begin()) {
+   Serial.println("Error al inicializar SPIFFS");
+  }
   
   // Print ESP32 Local IP Address
   Serial.println(WiFi.localIP());
@@ -137,7 +62,43 @@ lcd.setCursor(0, 0);
     }
     lastTimeBotRan = millis();
 
-
-
   }
+
+
+//////////////////////////////////////////////////////////////////////////
+  // Lectura de distancias desde los sensores ultrasonicos
+  unsigned int distance1 = sonar1.ping_cm();
+  unsigned int distance2 = sonar2.ping_cm();
+
+  // Comprueba si hay obstáculos en ambos lados del carro
+  if (distance1 < obstacleDistance && distance2 < obstacleDistance) {
+    // Detener el carro si encuentra obstáculos en ambos lados
+    stopCar();
+    Serial.println("Obstáculo detectado en ambos lados. Deteniendo el carro.");
+  } else if (distance1 < obstacleDistance) {
+    // Obstáculo detectado en el sensor 1, girar al otro lado
+    turnRight();
+    Serial.println("Obstáculo detectado en el lado derecho. Girando hacia la izquierda.");
+  } else if (distance2 < obstacleDistance) {
+    // Obstáculo detectado en el sensor 2, girar al otro lado
+    turnLeft();
+    Serial.println("Obstáculo detectado en el lado izquierdo. Girando hacia la derecha.");
+  } else {
+    // No hay obstáculos, avanzar el carro a una velocidad media
+    driveForward();
+    Serial.println("Avanzando...");
+  }
+
+  // Muestra las distancias en el monitor serial
+  Serial.print("Distancia sensor 1: ");
+  Serial.print(distance1);
+  Serial.print(" cm | ");
+  Serial.print("Distancia sensor 2: ");
+  Serial.print(distance2);
+  Serial.println(" cm");
+ escribirEnLCD("Distancia sensor 1: ", distance1, 0); // Mostrar "Nivel 0" en la fila 0 del LCD
+  escribirEnLCD("Distancia sensor 2: ", distance2, 1); // Mostrar "Nivel 1" en la fila 1 del LCD
+  delay(1000);  // Retardo antes de la siguiente iteración
+/////////////////////////////////////////////////////////////////////////////////////////
+
 }
